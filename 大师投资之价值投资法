@@ -62,10 +62,10 @@ def rebalance(context, data):
             context.order_target_percent(context.symbol(cp), weight)
 			
 # 使用该回测接口，需要传入多个策略参数
-m=M.trade.v3(
+m = M.trade.v3( 
     instruments=None,
-    start_date=start_date, 
-    end_date=end_date,
+    start_date='2013-01-01', 
+    end_date='2018-02-02',
     prepare=prepare,
     # 必须传入initialize，只在第一天运行
     initialize=initialize,
