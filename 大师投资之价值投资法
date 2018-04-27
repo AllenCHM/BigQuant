@@ -1,9 +1,16 @@
-start_date = '2013-02-01' # 开始日期
-end_date = '2017-07-18' # 结束日期
-instruments = D.instruments()
-# 获取市盈率、市净率、成交额数据
-history_data = D.history_data(instruments, start_date=start_date,
-               end_date= end_date, fields=[ 'pb_lf', 'pe_ttm','amount'])
+# 1. 获取数据, 整理换仓时的买入股票列表
+def prepare(context):
+    # 开始日期
+    start_date = context.start_date 
+    # 结束日期
+    end_date = context.end_date 
+    # 股票
+    context.instruments = D.instruments(context.start_date, context.end_date, market='CN_STOCK_A')    
+    
+    # 获取市盈率、市净率、成交额数据
+    history_data = D.history_data(context.instruments, context.start_date, context.end_date, ['pb_lf', 'pe_ttm','amount'])
+    # 每天买入的股票名单 -> seek_symbol
+    context.daily_buy_stock = history_data.groupby('date').apply(seek_symbol)
 			   
 # 该函数的目的是通过history_data这个大的原始数据，获取每日满足价值投资股票列表
 def seek_symbol(df):
@@ -16,15 +23,13 @@ def seek_symbol(df):
     # 按pe_ttm和pb_lf 升序排列
     selected = selected.sort_values(['pe_ttm','pb_lf'])
     return list(selected.instrument)[:30] # 记得转化成list
-
-daily_buy_stock = history_data.groupby('date').apply(seek_symbol)
-
+    
+# 2. 回测主体函数
 def initialize(context):
     # 设置交易费用，买入是万三，卖出是千分之1.3，如果不足5元按5元算
     context.set_commission(PerOrder(buy_cost=0.0003, sell_cost=0.0013, min_cost=5))
     # 设置换仓规则，即每个月月初换仓，持有至下个月，再换仓
     context.schedule_function(rebalance, date_rule=date_rules.month_start(days_offset=0)) 
-    # 上面schedule_function函数的这句代码，其实可以写到一行，分两行是为了便于展示
    
 def handle_data(context,data):
     pass
@@ -37,19 +42,16 @@ def rebalance(context, data):
     # 买入股票列表
     stock_to_buy = daily_buy_stock.ix[date]
     # 目前持仓列表    
-    stock_hold_now = [equity.symbol for equity 
-                               in context.portfolio.positions]
+    stock_hold_now = [equity.symbol for equity in context.portfolio.positions]
     # 继续持有股票列表
-    no_need_to_sell = [i for i in stock_hold_now 
-                               if i in stock_to_buy]
+    no_need_to_sell = [i for i in stock_hold_now if i in stock_to_buy]
     # 卖出股票列表 
-    stock_to_sell = [i for i in stock_hold_now if
-                           i not in no_need_to_sell]
+    stock_to_sell = [i for i in stock_hold_now if i not in no_need_to_sell]
     # 执行卖出
     for stock in stock_to_sell:
         if data.can_trade(context.symbol(stock)):
             context.order_target_percent(context.symbol(stock), 0)
-    
+    # 如果当天没有买入就返回
     if len(stock_to_buy) == 0:
         return
     # 等权重
@@ -60,10 +62,11 @@ def rebalance(context, data):
             context.order_target_percent(context.symbol(cp), weight)
 			
 # 使用该回测接口，需要传入多个策略参数
-m=M.trade.v2( 
-    instruments=instruments,
+m=M.trade.v3(
+    instruments=None,
     start_date=start_date, 
     end_date=end_date,
+    prepare=prepare,
     # 必须传入initialize，只在第一天运行
     initialize=initialize,
     # 必须传入handle_data,每个交易日都会运行
