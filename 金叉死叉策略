@@ -1,0 +1,41 @@
+instruments = ['600519.SHA']  
+start_date = '2012-05-28'  
+end_date = '2017-07-18'
+
+def initialize(context):
+    context.set_commission(PerOrder(buy_cost=0.0003, sell_cost=0.0013, min_cost=5)) # 设置手续费
+    context.short_period = 5 # 短期均线
+    context.long_period = 50 # 长期均线 
+
+def handle_data(context, data):
+    
+    if context.trading_day_index <  context.long_period:  # 长期均线值要有意义，需要在50根k线之后
+        return
+    
+    k = instruments[0] # 标的为字符串格式
+    sid = context.symbol(k) # 将标的转化为equity格式
+    price = data.current(sid, 'price') # 最新价格
+ 
+    short_mavg = data.history(sid, 'price',context.short_period, '1d').mean() # 短期均线值
+    long_mavg = data.history(sid, 'price',context.long_period, '1d').mean() # 长期均线值
+
+    cash = context.portfolio.cash # 现金
+    cur_position = context.portfolio.positions[sid].amount # 持仓
+    
+    # 交易逻辑
+    if short_mavg > long_mavg and cur_position == 0 and data.can_trade(sid):  
+        context.order(sid, int(cash/price/100)*100) # 买入
+        
+    elif short_mavg < long_mavg and cur_position > 0 and data.can_trade(sid):  
+        context.order_target_percent(sid, 0) # 全部卖出
+		
+m=M.trade.v2(
+    instruments=instruments,
+    start_date=start_date,
+    end_date=end_date,
+    initialize=initialize,
+    handle_data=handle_data,
+    order_price_field_buy='open',
+    order_price_field_sell='open',
+    capital_base=1000000,
+    )
